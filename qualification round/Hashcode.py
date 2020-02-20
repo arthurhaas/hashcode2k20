@@ -9,6 +9,7 @@ import numpy as np
 import math
 import os
 
+import time
 
 # In[184]:
 
@@ -73,13 +74,18 @@ def exract_used_books(df):
 
 
 def solve(num_books, num_libs, num_days, scores, df_libs, books_with_scores):
-    remaining_days = 10
+    #remaining_days = num_days
+    remaining_days = 200
     used_books = set()
     solution = []
 
 
     #prepare_dataframe(df_libs, books_with_scores)
     while (remaining_days >= 0) and (df_libs[df_libs.used == 0].shape[0] > 0):
+
+
+        start = time.time()
+
         
         # 1. Unbenutze Librarys auswählen
         df_tmp = df_libs[df_libs.used == 0].copy()
@@ -96,6 +102,7 @@ def solve(num_books, num_libs, num_days, scores, df_libs, books_with_scores):
                     tmp_score += book[1]
             tmp_books_with_scores.append(lib_books_with_scores)
             scores_by_lib.append(tmp_score)
+        
            
         # MVP todo
         # 4. Bücher ab aktuellem Datum - registration abschneiden !!! books per day mit einbeziehen
@@ -118,15 +125,24 @@ def solve(num_books, num_libs, num_days, scores, df_libs, books_with_scores):
         max_shipping_num = df_tmp.shipping_num.max()
         max_num_books = df_tmp.num_books.max()
         
+        start_1 = time.time()
 
         # 5. Score berechnen.
-        for index, row in df_tmp.iterrows():
+        # This part of applying the score calculation to each row was the slowest part of the script
+        # Using .apply instead of .iterrows() increased the speed from 9 seconds to 0.9 seconds.
+        # https://towardsdatascience.com/how-to-make-your-pandas-loop-71-803-times-faster-805030df4f06
+        def calcScore(row):
             reg_days = row['reg_time']
-            scaled_book_score = scores_by_lib[index] / max_books_score_by_lib
+            # row.name returns the row index
+            scaled_book_score = scores_by_lib[row.name] / max_books_score_by_lib
             scaled_book_per_day = row['shipping_num'] / max_shipping_num
             scaled_books_tot = row['num_books'] / max_num_books
-            df_tmp.loc[index,'score'] = score_lib(reg_days, scaled_book_score, scaled_book_per_day, scaled_books_tot)
-        
+            return score_lib(reg_days, scaled_book_score, scaled_book_per_day, scaled_books_tot)
+
+
+        df_tmp['score'] = df_tmp.apply(lambda row: calcScore(row), axis=1)
+        print("-- iterrows part: " + str(time.time() - start_1))
+
         # gather max score
         df_tmp.score.max()
         
@@ -144,6 +160,9 @@ def solve(num_books, num_libs, num_days, scores, df_libs, books_with_scores):
         used_books.update(set([book[0] for book in tmp_books_with_scores[idx]]))
         # todo 
         remaining_days -= 1
+
+        end = time.time()
+        print("1 while iteration time: " + str(end - start))
         
 
     return solution
@@ -184,14 +203,18 @@ def output(solutions, path):
 
 
 if __name__ == '__main__':
-    paths = ["data/a_example.txt",
+    paths = [   "data/a_example.txt",
                 "data/b_read_on.txt",
-                #"data/c_incunabula.txt",
+                "data/c_incunabula.txt",
                 "data/d_tough_choices.txt",
                 "data/e_so_many_books.txt",
                 "data/f_libraries_of_the_world.txt"]
 
+    start_script = time.time()
+
     for path in paths:
+        start = time.time()
+
         print("processing file {}".format(path))
         
         # import
@@ -213,3 +236,7 @@ if __name__ == '__main__':
         output(solution, output_path)
         
         print("")
+        print("time: " + str(time.time() - start))
+        print()
+    
+    print("script finished after: " + str(time.time() - start))
